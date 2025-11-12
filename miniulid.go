@@ -1,9 +1,9 @@
 package miniulid
 
 import (
-	"crypto/rand"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 )
 
@@ -33,6 +33,8 @@ var (
 	errLength      = fmt.Errorf("miniulid: encoded form must be %d characters", totalSize)
 )
 
+var defaultMinuteCounter = &minuteCounter{}
+
 var decodeAlphabet = func() map[byte]uint8 {
 	m := make(map[byte]uint8, len(encodeAlphabet)*2)
 	for i, r := range encodeAlphabet {
@@ -52,9 +54,14 @@ var decodeAlphabet = func() map[byte]uint8 {
 	return m
 }()
 
-// Generate produces a new ID using the current UTC time and crypto/rand entropy.
+// Generate produces a new ID using the current UTC minute and a monotonic counter.
 func Generate() (ID, error) {
-	return GenerateWithTime(time.Now().UTC(), rand.Reader)
+	now := time.Now().UTC()
+	counter, err := defaultMinuteCounter.next(now)
+	if err != nil {
+		return 0, err
+	}
+	return GenerateWithComponents(now, counter)
 }
 
 // MustGenerate is a convenience helper that panics on error.
@@ -204,4 +211,30 @@ func random14(entropy io.Reader) (uint16, error) {
 		return 0, err
 	}
 	return uint16(buffer[0])<<8 | uint16(buffer[1])&randomMask, nil
+}
+
+type minuteCounter struct {
+	mu     sync.Mutex
+	minute time.Time
+	value  uint16
+}
+
+func (mc *minuteCounter) next(t time.Time) (uint16, error) {
+	mc.mu.Lock()
+	defer mc.mu.Unlock()
+
+	currentMinute := t.UTC().Truncate(time.Minute)
+
+	if mc.minute.IsZero() || !mc.minute.Equal(currentMinute) {
+		mc.minute = currentMinute
+		mc.value = 0
+		return 0, nil
+	}
+
+	if mc.value == randomMask {
+		return 0, fmt.Errorf("miniulid: counter overflow for minute %s", currentMinute.Format(time.RFC3339))
+	}
+
+	mc.value++
+	return mc.value, nil
 }
