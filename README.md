@@ -14,6 +14,14 @@ This ID format is designed for systems with moderate insert frequency
 - **Collision-safe** within each minute  
 - **Readable** and non-sequential
 
+Example (`2024-08-18T15:30Z`, random segment `0x04D2` → decimal 1234):
+
+- Encoded string: `0F5VD3YH`
+- Components:
+  - Days since 2020-01-01 UTC: `1689`
+  - Minute of day: `930` (15:30)
+  - Random/counter: `1234`
+
 ---
 
 ## Bit Layout
@@ -34,14 +42,84 @@ This ID format is designed for systems with moderate insert frequency
 
 Binary: DDDDDDDDDDDDDDD MMMMMMMMMMM RRRRRRRRRRRRRR
 
-## Encoding Process (Golang Example)
+---
+
+## Go Usage
+
+### Installation
+
+```sh
+go get github.com/chisenberg/mini-ulid
+```
 
 ```go
-// combine fields into 40-bit value
-id := (uint64(daysSince2020) << (11 + 14)) |
-      (uint64(minuteOfDay) << 14) |
-      uint64(random14)
+package main
 
-// encode to Crockford Base32 (8 chars)
-encoded := CrockfordEncode40(id)
+import (
+	"bytes"
+	"fmt"
+	"time"
+
+	"github.com/chisenberg/mini-ulid"
+)
+
+func main() {
+	// Generate with random entropy (crypto/rand).
+	id, err := miniulid.Generate()
+	if err != nil {
+		panic(err)
+	}
+	// e.g. generate: 0F5VD3YH 1234567890 2024-08-18 15:30:00 +0000 UTC
+	fmt.Println("generate:", id.String(), id.Int64(), id.Time())
+
+	// Generate with supplied counter/random segment.
+	// accepts 0-16383
+	counter := uint16(42)
+	withCounter, err := miniulid.GenerateWithComponents(time.Now(), counter)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("counter:", withCounter.String())
+	// counter: 0F5VD3YH
+
+	// Generate with deterministic time + entropy reader.
+	// minute precision (seconds ignored)
+	t := time.Date(2024, 8, 18, 15, 30, 0, 0, time.UTC)
+	// any io.Reader; lower 14 bits used
+	entropy := bytes.NewReader([]byte{0x12, 0x34})
+	withEntropy, err := miniulid.GenerateWithTime(t, entropy)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("withTime:", withEntropy.String(), withEntropy.Time())
+	// withTime: 0F5VD3YH 2024-08-18 15:30:00 +0000 UTC
+
+	// Panic-on-error helper.
+	must := miniulid.MustGenerate()
+	fmt.Println("must:", must.String())
+	// must: 0F5VD3YH
+
+	// Parse from Crockford Base32 string.
+	// accepts 8-char Crockford Base32 (case-insensitive)
+	parsed, err := miniulid.Parse(withEntropy.String())
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("parse:", parsed.Int64(), parsed.Time())
+	// parse: 1234567890 2024-08-18 15:30:00 +0000 UTC
+
+	// Convert to and from the 40-bit int64 encoding.
+	// input must fit in 40 bits and be >= 0
+	back, err := miniulid.FromInt64(parsed.Int64())
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("int64:", back.String(), back.Int64())
+	// int64: 0F5VD3YH 1234567890
+
+	// Examine bitfield components.
+	days, minuteOfDay, random := back.Components()
+	fmt.Printf("parts: days=%d minute=%d random=%d\n", days, minuteOfDay, random)
+	// parts: days=1689 minute=930 random=1234
+}
 ```
