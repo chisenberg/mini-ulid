@@ -12,6 +12,7 @@ This ID format is designed for systems with moderate insert frequency
 - Chronologically **sortable**  
 - **Compact** (8 Crockford Base32 chars)  
 - **Collision-safe** within each minute  
+- **Monotonic** per process within each minute (counter resets when the minute changes)  
 - **Readable** and non-sequential
 
 Example (`2024-08-18T15:30Z`, random segment `0x04D2` → decimal 1234):
@@ -60,11 +61,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/chisenberg/mini-ulid"
+	miniulid "github.com/chisenberg/mini-ulid"
 )
 
 func main() {
-	// Generate with random entropy (crypto/rand).
+	// Generate maintains a per-process counter that resets each minute.
+	// Calls within the same minute get sequential random segments.
 	id, err := miniulid.Generate()
 	if err != nil {
 		panic(err)

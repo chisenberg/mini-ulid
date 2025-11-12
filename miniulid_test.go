@@ -1,7 +1,6 @@
 package miniulid
 
 import (
-	"bytes"
 	"errors"
 	"testing"
 	"time"
@@ -14,7 +13,7 @@ func TestGenerateWithComponents(t *testing.T) {
 		t.Fatalf("GenerateWithComponents error: %v", err)
 	}
 
-	days, minutes, random := id.Components()
+	days, minutes, counter := id.Components()
 	diffDays := int(ts.UTC().Sub(epoch) / (24 * time.Hour))
 	if got, want := int(days), diffDays; got != want {
 		t.Fatalf("days mismatch: got %d want %d", got, want)
@@ -22,8 +21,8 @@ func TestGenerateWithComponents(t *testing.T) {
 	if got, want := int(minutes), ts.UTC().Hour()*60+ts.UTC().Minute(); got != want {
 		t.Fatalf("minutes mismatch: got %d want %d", got, want)
 	}
-	if got, want := int(random), int(0x1ACE&randomMask); got != want {
-		t.Fatalf("random mismatch: got %d want %d", got, want)
+	if got, want := int(counter), int(0x1ACE&counterMask); got != want {
+		t.Fatalf("counter mismatch: got %d want %d", got, want)
 	}
 
 	encoded := id.String()
@@ -55,34 +54,15 @@ func TestGenerateWithComponents(t *testing.T) {
 	}
 }
 
-func TestGenerateWithTimeEntropy(t *testing.T) {
-	ts := time.Date(2024, 7, 30, 8, 0, 0, 0, time.UTC)
-	entropy := bytes.NewReader([]byte{0x12, 0x34})
-	id, err := GenerateWithTime(ts, entropy)
-	if err != nil {
-		t.Fatalf("GenerateWithTime error: %v", err)
-	}
-
-	_, _, random := id.Components()
-	if random != uint16(0x1234)&randomMask {
-		t.Fatalf("unexpected random: got %d", random)
-	}
-
-	got := id.Time()
-	if want := ts; !got.Equal(want) {
-		t.Fatalf("time mismatch: got %v want %v", got, want)
-	}
-}
-
 func TestGenerateErrors(t *testing.T) {
 	_, err := GenerateWithComponents(epoch.Add(-time.Minute), 0)
 	if !errors.Is(err, errTimePast) {
 		t.Fatalf("expected errTimePast, got %v", err)
 	}
 
-	_, err = GenerateWithComponents(epoch, randomMask+1)
+	_, err = GenerateWithComponents(epoch, counterMask+1)
 	if err == nil {
-		t.Fatalf("expected random overflow error")
+		t.Fatalf("expected counter overflow error")
 	}
 }
 

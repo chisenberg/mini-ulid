@@ -2,7 +2,6 @@ package miniulid
 
 import (
 	"fmt"
-	"io"
 	"sync"
 	"time"
 )
@@ -13,13 +12,13 @@ type ID uint64
 const (
 	daysBits    = 15
 	minutesBits = 11
-	randomBits  = 14
+	counterBits = 14
 
-	randomMask  = (1 << randomBits) - 1
+	counterMask = (1 << counterBits) - 1
 	minutesMask = (1 << minutesBits) - 1
 	daysMask    = (1 << daysBits) - 1
 
-	totalBits = daysBits + minutesBits + randomBits
+	totalBits = daysBits + minutesBits + counterBits
 	totalSize = 8
 )
 
@@ -73,29 +72,10 @@ func MustGenerate() ID {
 	return id
 }
 
-// GenerateWithTime produces an ID for the provided time, using the supplied entropy reader for the random bits.
-func GenerateWithTime(t time.Time, entropy io.Reader) (ID, error) {
-	dayCount, minuteOfDay, err := splitTime(t)
-	if err != nil {
-		return 0, err
-	}
-
-	randomValue, err := random14(entropy)
-	if err != nil {
-		return 0, fmt.Errorf("miniulid: random entropy: %w", err)
-	}
-
-	value := (uint64(dayCount) << (minutesBits + randomBits)) |
-		(uint64(minuteOfDay) << randomBits) |
-		uint64(randomValue)
-
-	return ID(value), nil
-}
-
-// GenerateWithComponents builds an ID from a timestamp and a user-supplied counter/random value.
-func GenerateWithComponents(t time.Time, random uint16) (ID, error) {
-	if random > randomMask {
-		return 0, fmt.Errorf("miniulid: random value overflow (max %d)", randomMask)
+// GenerateWithComponents builds an ID from a timestamp and a user-supplied counter value.
+func GenerateWithComponents(t time.Time, counter uint16) (ID, error) {
+	if counter > counterMask {
+		return 0, fmt.Errorf("miniulid: counter value overflow (max %d)", counterMask)
 	}
 
 	dayCount, minuteOfDay, err := splitTime(t)
@@ -103,9 +83,9 @@ func GenerateWithComponents(t time.Time, random uint16) (ID, error) {
 		return 0, err
 	}
 
-	value := (uint64(dayCount) << (minutesBits + randomBits)) |
-		(uint64(minuteOfDay) << randomBits) |
-		uint64(random)
+	value := (uint64(dayCount) << (minutesBits + counterBits)) |
+		(uint64(minuteOfDay) << counterBits) |
+		uint64(counter)
 
 	return ID(value), nil
 }
@@ -162,9 +142,9 @@ func (id ID) String() string {
 func (id ID) Time() time.Time {
 	value := uint64(id)
 
-	random := uint16(value & randomMask)
-	_ = random // ensures we keep the variable for clarity; random not used directly
-	value >>= randomBits
+	counter := uint16(value & counterMask)
+	_ = counter // ensures we keep the variable for clarity; counter not used directly
+	value >>= counterBits
 
 	minuteOfDay := uint16(value & minutesMask)
 	value >>= minutesBits
@@ -175,12 +155,12 @@ func (id ID) Time() time.Time {
 	return t.Add(time.Duration(minuteOfDay) * time.Minute)
 }
 
-// Components returns the day, minute, and random segments for inspection.
-func (id ID) Components() (days uint16, minuteOfDay uint16, random uint16) {
+// Components returns the day, minute, and rancdom segments for inspection.
+func (id ID) Components() (days uint16, minuteOfDay uint16, counter uint16) {
 	value := uint64(id)
 
-	random = uint16(value & randomMask)
-	value >>= randomBits
+	counter = uint16(value & counterMask)
+	value >>= counterBits
 
 	minuteOfDay = uint16(value & minutesMask)
 	value >>= minutesBits
@@ -205,14 +185,6 @@ func splitTime(t time.Time) (uint16, uint16, error) {
 	return uint16(days), uint16(minuteOfDay), nil
 }
 
-func random14(entropy io.Reader) (uint16, error) {
-	var buffer [2]byte
-	if _, err := io.ReadFull(entropy, buffer[:]); err != nil {
-		return 0, err
-	}
-	return uint16(buffer[0])<<8 | uint16(buffer[1])&randomMask, nil
-}
-
 type minuteCounter struct {
 	mu     sync.Mutex
 	minute time.Time
@@ -231,7 +203,7 @@ func (mc *minuteCounter) next(t time.Time) (uint16, error) {
 		return 0, nil
 	}
 
-	if mc.value == randomMask {
+	if mc.value == counterMask {
 		return 0, fmt.Errorf("miniulid: counter overflow for minute %s", currentMinute.Format(time.RFC3339))
 	}
 
