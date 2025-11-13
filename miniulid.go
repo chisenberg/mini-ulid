@@ -34,24 +34,20 @@ var (
 
 var defaultMinuteCounter = &minuteCounter{}
 
-var decodeAlphabet = func() map[byte]uint8 {
-	m := make(map[byte]uint8, len(encodeAlphabet)*2)
-	for i, r := range encodeAlphabet {
-		c := byte(r)
-		m[c] = uint8(i)
-		if c >= 'A' && c <= 'Z' {
-			m[c+32] = uint8(i) // lowercase letters
-		}
-	}
-	alt := map[byte]uint8{
-		'i': 1, 'I': 1, 'l': 1, 'L': 1,
-		'o': 0, 'O': 0,
-	}
-	for k, v := range alt {
-		m[k] = uint8(v)
-	}
-	return m
-}()
+var decodeAlphabet = map[byte]uint8{
+	'0': 0, '1': 1, '2': 2, '3': 3, '4': 4,
+	'5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
+	'A': 10, 'B': 11, 'C': 12, 'D': 13, 'E': 14,
+	'F': 15, 'G': 16, 'H': 17, 'J': 18, 'K': 19,
+	'M': 20, 'N': 21, 'P': 22, 'Q': 23, 'R': 24,
+	'S': 25, 'T': 26, 'V': 27, 'W': 28, 'X': 29,
+	'Y': 30, 'Z': 31, 'a': 10, 'b': 11, 'c': 12,
+	'd': 13, 'e': 14, 'f': 15, 'g': 16, 'h': 17,
+	'j': 18, 'k': 19, 'm': 20, 'n': 21, 'p': 22,
+	'q': 23, 'r': 24, 's': 25, 't': 26, 'v': 27,
+	'w': 28, 'x': 29, 'y': 30, 'z': 31, 'i': 1,
+	'I': 1, 'l': 1, 'L': 1, 'o': 0, 'O': 0,
+}
 
 // Generate produces a new ID using the current UTC minute and a monotonic counter.
 func Generate() (ID, error) {
